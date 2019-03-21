@@ -8,6 +8,14 @@ import os
 import matplotlib.pyplot as plt
 from astropy.modeling import models, fitting
 
+# -------------------------------------------------- #
+# ------------------ Spectrumv18 ------------------- #
+# -------------------------------------------------- #
+# Read in spectral data assuming the format from v18 #
+# of the OzDES reduction pipeline. Modify if your    #
+# input data is stored differently                   #
+# -------------------------------------------------- #
+
 class Spectrumv18(object):
     def __init__(self, filepath=None):
         assert filepath is not None
@@ -119,4 +127,50 @@ class Spectrumv18(object):
                 self._exposed.append(self.data[i * 3 + 3].header['EXPOSED'])
                 # this will give you the exposure time of each observation
         return self._exposed
+
+
+
+def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase):
+    # Assumes scaling given is of the form
+    # gScale = scaling[0,:]   gError = scaling[3,:]
+    # rScale = scaling[1,:]   rError = scaling[4,:]
+    # iScale = scaling[2,:]   iError = scaling[5,:]
+    # inCoaddWeather = scaling[6,:]
+    # inCoaddPhoto = scaling[7,:]
+    # gMag = scaling[8,:]   gMagErr = scaling[9,:]
+    # rMag = scaling[10,:]  rMagErr = scaling[11,:]
+    # iMag = scaling[12,:]  iMagErr = scaling[13,:]
+    #print('numEpochs Before Coadd: ', spectra.numEpochs)
+
+    # Now here is some code that will read in the OzDES data fits files and will
+    # organize the individual observations into nights
+
+    listRuns, extensions, badWeather, noPhotometry, badQC = prevent_Excess(obj_name, spectra, photo, bad)
+
+    nevermind, scaling = scaling_Matrix(spectra, extensions, badWeather, noPhotometry, photo)
+
+    extensions = [e for e in extensions if e not in nevermind]
+
+    badWeather = badWeather + nevermind
+
+    coaddFlux = np.zeros((5000, len(listRuns) + 1))
+    coaddVar = np.zeros((5000, len(listRuns) + 1))
+    coaddBadPix = np.zeros((5000, len(listRuns) + 1))
+
+    speclistC = []  # for coadd - only include spectra for which inCoaddWeather/Photo == True
+    index = 1
+
+    #print('numEpochs After Coadd: ', len(listRuns))
+
+    for r in listRuns:
+        speclist = []
+        for s in extensions:
+            if spectra.run[s] == r:
+                # scale the spectra
+                fluxScale, varScale = warp_spectra(scaling[0:3, s], scaling[3:6, s], spectra.flux[:, s],
+                                                   spectra.variance[:, s], spectra.wavelength, r)
+
+    create_output(obj_name, listRuns, coaddFlux, coaddVar, coaddBadPix, extensions, scaling, spectra, redshift, badWeather,
+                  noPhotometry, badQC, spectraName, photoName, outBase)
+    return
 
