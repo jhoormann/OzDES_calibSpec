@@ -6,4 +6,4 @@ This is a code to perform spectrophotometric calibration.  It was designed to ca
 ## Reference
 If you are using this code please cite the paper where this procedure was first presented,
 
-Hoormann et al 2019, submitted to MNRAS, arXiv: 1902:04206
+[Hoormann et al 2019, submitted to MNRAS, arXiv: 1902:04206](https://arxiv.org/abs/1902.04206)
