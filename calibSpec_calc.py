@@ -1,11 +1,19 @@
+# ---------------------------------------------------------- #
+# This is a code to perform spectrophotometric calibration.  #
+# It was designed to calibrate spectral data from the Anglo  #
+# Australian Telescope by matching it to near simultaneous   #
+# photometric observations using DECam on the Blanco         #
+# Telescope as part of the OzDES Reverberation Mapping       #
+# Program.  Unless otherwise noted this code was written by  #
+# Janie Hoormann.                                            #
+# ---------------------------------------------------------- #
+
 from astropy.io import fits
 import numpy as np
-from scipy.integrate import fixed_quad
 from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 import matplotlib.pyplot as plt
-from astropy.modeling import models, fitting
 
 
 # -------------------------------------------------- #
@@ -152,26 +160,26 @@ def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase, bands, 
     # gMag = scaling[8,:]   gMagErr = scaling[9,:]
     # rMag = scaling[10,:]  rMagErr = scaling[11,:]
     # iMag = scaling[12,:]  iMagErr = scaling[13,:]
-    #print('numEpochs Before Coadd: ', spectra.numEpochs)
 
-    # Now here is some code that will read in the OzDES data fits files and will
-    # organize the individual observations into nights
-
+    # First we decide which extensions are worth scaling
     extensions, noPhotometry, badQC = prevent_Excess(spectra, photo, bands)
 
+    # Then we calculate the scale factors
     nevermind, scaling = scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filters)
 
+    # Remove last minute trouble makers
     extensions = [e for e in extensions if e not in nevermind]
-
     badQC = badQC + nevermind
 
+    # And finally warp the data
     for s in extensions:
         # scale the spectra
-        fluxScale, varScale = warp_spectra(scaling[0:3, s], scaling[3:6, s], spectra.flux[:, s],
-                                           spectra.variance[:, s], spectra.wavelength, centers, plotFlag)
+        spectra.flux[:, s], spectra.variance[:, s] = warp_spectra(scaling[0:3, s], scaling[3:6, s], spectra.flux[:, s],
+                                                                  spectra.variance[:, s], spectra.wavelength, centers,
+                                                                  plotFlag)
 
-    create_output(obj_name, listRuns, coaddFlux, coaddVar, coaddBadPix, extensions, scaling, spectra, redshift, badWeather,
-                  noPhotometry, badQC, spectraName, photoName, outBase)
+    create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, spectraName, photoName, outBase)
+
     return
 
 # -------------------------------------------------- #
@@ -301,6 +309,11 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
                                                            spectra.wavelength, spectra.flux[:, e],
                                                            spectra.variance[:, e])
 
+        # Sometimes the total flux in the band goes zero and this obviously creates issues further down the line and
+        # is most noticeable when the calculated magnitude is nan.  Sometimes it is because the data is very noisy
+        # or the occasional negative spectrum is a known artifact of the data, more common in early OzDES runs.  In the
+        # case where the observation doesn't get cut based on quality flag it will start getting ignored here.  The runs
+        # ignored will eventually be saved with the badQC extensions.
 
         if np.isnan(ozdesPhoto[:, e]).any() == True:
             nevermind.append(e)
@@ -508,7 +521,7 @@ def scale_factors(mag_diff, mag_diff_var):
 # ----------------- warp_spectra  ------------------ #
 # -------------------------------------------------- #
 # Fits polynomial to scale factors and estimates     #
-# associated uncertainties with gaussian processes.   #
+# associated uncertainties with gaussian processes.  #
 # -------------------------------------------------- #
 
 def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFlag):
@@ -561,4 +574,204 @@ def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFla
     '''
 
     return fluxScale, varScale
+
+# -------------------------------------------------- #
+# ---------------- create_output  ------------------ #
+# -------------------------------------------------- #
+# Outputs the warped spectra to a new fits file.     #
+# -------------------------------------------------- #
+
+
+def create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, spectraName, photoName, outBase):
+
+    outName = outBase + obj_name + "_scaled.fits"
+    print("Saving Data to " + outName)
+
+    hdulist = fits.HDUList(fits.PrimaryHDU())
+
+    noPhotometryExt = []
+    if len(noPhotometry) > 0:
+        for i in range(len(noPhotometry)):
+            noPhotometryExt.append(spectra.ext[noPhotometry[i]])
+
+    badQCExt = []
+    if len(badQC) > 0:
+        for i in range(len(badQC)):
+            badQCExt.append(spectra.ext[badQC[i]])
+
+    # Create an HDU for each night
+    for i in extensions:
+        header = fits.Header()
+        header['SOURCE'] = obj_name
+        header['RA'] = spectra.RA
+        header['DEC'] = spectra.DEC
+        header['CRPIX1'] = spectra.crpix1
+        header['CRVAL1'] = spectra.crval1
+        header['CDELT1'] = spectra.cdelt1
+        header['CTYPE1'] = 'wavelength'
+        header['CUNIT1'] = 'angstrom'
+        header['EPOCHS'] = len(extensions)
+
+        # save the names of the input data and the extensions ignored
+        header['SFILE'] = spectraName
+        header['PFILE'] = photoName
+        header['NOPHOTO'] = ','.join(map(str, noPhotometryExt))
+        header['BADQC'] = ','.join(map(str, badQCExt))
+
+        # save the original spectrum's extension number and some other details
+        header["EXT"] = spectra.ext[i]
+        header["UTMJD"] = spectra.dates[i]
+        header["EXPOSE"] = spectra.exposed[i]
+        header["QC"] = spectra.qc[i]
+
+        # save scale factors/uncertainties
+        header["SCALEG"] = scaling[0, i]
+        header["ERRORG"] = scaling[3, i]
+        header["SCALER"] = scaling[1, i]
+        header["ERRORR"] = scaling[4, i]
+        header["SCALEI"] = scaling[2, i]
+        header["ERRORI"] = scaling[5, i]
+
+        # save photometry/uncertainties used to calculate scale factors
+        header["MAGG"] = scaling[8, i]
+        header["MAGUG"] = scaling[9, i]
+        header["MAGR"] = scaling[10, i]
+        header["MAGUR"] = scaling[11, i]
+        header["MAGI"] = scaling[12, i]
+        header["MAGUI"] = scaling[13, i]
+
+        hdu_flux = fits.ImageHDU(data=spectra.flux[:, i], header=header)
+        hdu_fluxvar = fits.ImageHDU(data=spectra.variance[:, i], header=header)
+        hdu_badpix = fits.ImageHDU(data=spectra.badpix[:, i], header=header)
+        hdulist.append(hdu_flux)
+        hdulist.append(hdu_fluxvar)
+        hdulist.append(hdu_badpix)
+
+
+    hdulist.writeto(outName, clobber=True)
+    hdulist.close()
+
+    return
+
+# -------------------------------------------------- #
+# Modified from code originally provided by          #
+# Harry Hobson                                       #
+# -------------------------------------------------- #
+# ------------------ mark_as_bad ------------------- #
+# -------------------------------------------------- #
+# Occasionally you get some big spikes in the data   #
+# that you do not want messing with your magnitude   #
+# calculations.  Remove these by looking at single   #
+# bins that have a significantly larger than average #
+# fluxes or variances and change those to nans.      #
+# Nans will be interpolated over.                    #
+# -------------------------------------------------- #
+
+def mark_as_bad(fluxes, variances):
+    number = int(fluxes.size/fluxes.shape[0])
+    for epoch in range(number):
+        if number == 1:
+            flux = fluxes[:]
+            variance = variances[:]
+        else:
+            flux = fluxes[:, epoch]
+            variance = variances[:, epoch]
+
+        nBins = len(flux)
+        # define the local average in flux and variance to compare outliers to
+        for i in range(nBins):
+            if i < 50:
+                avg = np.nanmean(variance[0:99])
+                avgf = np.nanmean(flux[0:99])
+            elif i > nBins - 50:
+                avg = np.nanmean(variance[i-50:nBins-1])
+                avgf = np.nanmean(flux[i-50:nBins-1])
+            else:
+                avg = np.nanmean(variance[i-50:i+50])
+                avgf = np.nanmean(flux[i-50:i+50])
+
+            # find outliers and set that bin and the neighbouring ones to nan.
+
+            if np.isnan(variance[i]) == False and variance[i] > 3.5*avg:
+
+                flux[i] = np.nan
+                if i > 2 and i < 4996:
+                    flux[i - 1] = np.nan
+                    flux[i - 2] = np.nan
+                    flux[i - 3] = np.nan
+                    flux[i + 1] = np.nan
+                    flux[i + 2] = np.nan
+                    flux[i + 3] = np.nan
+
+            if np.isnan(flux[i]) == False and flux[i] > 4.5 * avgf:
+
+                flux[i] = np.nan
+                if i > 2 and i < 4996:
+                    flux[i-1] = np.nan
+                    flux[i-2] = np.nan
+                    flux[i-3] = np.nan
+                    flux[i+1] = np.nan
+                    flux[i+2] = np.nan
+                    flux[i+3] = np.nan
+
+        # interpolates nans (added here and bad pixels in the data)
+        filter_bad_pixels(flux, variance)
+    return
+
+# -------------------------------------------------- #
+# Modified from code originally provided by          #
+# Harry Hobson                                       #
+# -------------------------------------------------- #
+# --------------- filter_bad_pixels ---------------- #
+# -------------------------------------------------- #
+# Interpolates over nans in the spectrum.            #
+# -------------------------------------------------- #
+
+def filter_bad_pixels(fluxes, variances):
+    number = int(fluxes.size/fluxes.shape[0])
+    for epoch in range(number):
+        if (number == 1):
+            flux = fluxes[:]
+            variance = variances[:]
+        else:
+            flux = fluxes[:, epoch]
+            variance = variances[:, epoch]
+
+        nBins = len(flux)
+
+        flux[0] = 0.0
+        flux[-1] = 0.0
+        variance[0] = 100*np.nanmean(variance)
+        variance[-1] = 100*np.nanmean(variance)
+
+        bad_pixels = np.logical_or.reduce((np.isnan(flux), np.isnan(variance), variance < 0))
+
+        bin = 0
+        binEnd = 0
+
+        while (bin < nBins):
+            if (bad_pixels[bin] == True):
+                binStart = bin
+                binNext = bin + 1
+                while (binNext < nBins):
+                    if bad_pixels[binNext] == False:
+                        binEnd = binNext - 1
+                        binNext = nBins
+                    binNext = binNext + 1
+
+                ya = float(flux[binStart - 1])
+                xa = float(binStart - 1)
+                sa = variance[binStart - 1]
+                yb = flux[binEnd + 1]
+                xb = binEnd + 1
+                sb = variance[binEnd + 1]
+
+                step = binStart
+                while (step < binEnd + 1):
+                    flux[step] = ya + (yb - ya) * (step - xa) / (xb - xa)
+                    variance[step] = sa + (sb + sa) * ((step - xa) / (xb - xa)) ** 2
+                    step = step + 1
+                bin = binEnd
+            bin = bin + 1
+    return
 

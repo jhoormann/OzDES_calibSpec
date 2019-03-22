@@ -40,6 +40,17 @@ The transmission function for each of the photometric filters in a two column fo
 These file names and locations are defined in the _run.py file.
 
 # Output Data
+Creates a new fits file with the following information
+
+Ext 0. Scaled flux for first exposure
+
+Ext 1. Scaled variance for first exposure
+
+Ext 2. Bad pixel array for first exposure
+
+Ext 3+. Ext 0-2 repeated for each exposure
+
+Selected information is saved in the header for each extension including the scale factors and photometric magnitudes used in the calibration.
 
 # Reference
 If you are using this code please cite the paper where this procedure was first presented,
