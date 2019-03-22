@@ -30,11 +30,14 @@ The spectral data is read in via the class Spectrumv18.  If your data is stored 
 
 The photometric data is expected to be in a 4 column .txt file with the following labeled columns:
 
-MJD   Mag   Mag_err   Band
+Date    Mag    Mag_err    Band
 
+It is assumed that you have data in 3 photometric filters.  The data are in chronological order by band (ie all g band together followed by r followed by i). For this code to work you need to have a photometric data point in each filter on each side of the spectroscopic observation.
+Note while spectroscopic uncertainties are given by variance (sigma^2) photometric are given by sigma.
 
 ## Transmission Functions
-
+The transmission function for each of the photometric filters in a two column format: wavelength (nm) and transmission fraction (range 0-1)
+These file names and locations are defined in the _run.py file.
 
 # Output Data
 
