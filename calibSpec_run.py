@@ -56,7 +56,6 @@ for i in range(1):
 
     print("Input Spectra Name: %s" % spectraName)
     spectra = calc.Spectrumv18(spectraName)
-    plt.plot(spectra.wavelength, spectra.wavlength)
 
     calc.mark_as_bad(spectra.flux, spectra.variance)
 

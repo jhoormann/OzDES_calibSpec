@@ -15,7 +15,7 @@ numpy==1.13.3
 
 astropy==3.0.4
 
-scikit_learn==0.20.3
+scikit_learn==0.19.0
 
 # Input Data
 This code will expect you to supply the following data.  The location of this data is defined by the user in calibSpec_run.py.
