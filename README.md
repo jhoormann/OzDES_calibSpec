@@ -3,9 +3,22 @@ This is a code to perform spectrophotometric calibration.  It was designed to ca
 
 
 # Run Requirements
+The code was tested using the following
 
+python==3.5.2
+
+matplotlib==2.0.2
+
+scipy==0.19.1
+
+numpy==1.13.3
+
+astropy==3.0.4
+
+scikit_learn==0.20.3
 
 # Input Data
+This code will expect you to supply the following data.  The location of this data is defined by the user in calibSpec_run.py.
 ## Spectral Data
 This code is currently set up to read in spectral data as outputed by v18 of the OzDES reduction pipeline.  This is a fits file formatted in the following way
 

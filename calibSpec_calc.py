@@ -200,7 +200,6 @@ def prevent_Excess(spectra, photo, bands):
 
     maxPhot = np.zeros(3)
 
-
     for e in range(len(photo['Date'][:])):
         if photo['Band'][e] == bands[0]:
             if photo['Date'][e] > maxPhot[0]:
@@ -225,7 +224,6 @@ def prevent_Excess(spectra, photo, bands):
             if photo['Date'][e] < minPhot[2]:
                 minPhot[2] = photo['Date'][e]
     photLimMin = max(minPhot)
-
     noPhotometry = []
     badQC = []
 
@@ -299,13 +297,13 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
     for e in extensions:
         # Find OzDES photometry
 
-        ozdesPhoto[0, e], ozdesPhotoU[0, e] = computeABmag(filterCurves['g'].trans, filterCurves['g'].wave,
+        ozdesPhoto[0, e], ozdesPhotoU[0, e] = computeABmag(filterCurves[bands[0]].trans, filterCurves[bands[0]].wave,
                                                            spectra.wavelength, spectra.flux[:, e],
                                                            spectra.variance[:, e])
-        ozdesPhoto[1, e], ozdesPhotoU[1, e] = computeABmag(filterCurves['r'].trans, filterCurves['g'].wave,
+        ozdesPhoto[1, e], ozdesPhotoU[1, e] = computeABmag(filterCurves[bands[1]].trans, filterCurves[bands[1]].wave,
                                                            spectra.wavelength, spectra.flux[:, e],
                                                            spectra.variance[:, e])
-        ozdesPhoto[2, e], ozdesPhotoU[2, e] = computeABmag(filterCurves['i'].trans, filterCurves['g'].wave,
+        ozdesPhoto[2, e], ozdesPhotoU[2, e] = computeABmag(filterCurves[bands[2]].trans, filterCurves[bands[2]].wave,
                                                            spectra.wavelength, spectra.flux[:, e],
                                                            spectra.variance[:, e])
 
@@ -599,6 +597,7 @@ def create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, s
         for i in range(len(badQC)):
             badQCExt.append(spectra.ext[badQC[i]])
 
+    index = 0
     # Create an HDU for each night
     for i in extensions:
         header = fits.Header()
@@ -639,16 +638,55 @@ def create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, s
         header["MAGUR"] = scaling[11, i]
         header["MAGI"] = scaling[12, i]
         header["MAGUI"] = scaling[13, i]
+        if index == 0:
+            hdulist[0].header['SOURCE'] = obj_name
+            hdulist[0].header['RA'] = spectra.RA
+            hdulist[0].header['DEC'] = spectra.DEC
+            hdulist[0].header['CRPIX1'] = spectra.crpix1
+            hdulist[0].header['CRVAL1'] = spectra.crval1
+            hdulist[0].header['CDELT1'] = spectra.cdelt1
+            hdulist[0].header['CTYPE1'] = 'wavelength'
+            hdulist[0].header['CUNIT1'] = 'angstrom'
+            hdulist[0].header['EPOCHS'] = len(extensions)
 
-        hdu_flux = fits.ImageHDU(data=spectra.flux[:, i], header=header)
-        hdu_fluxvar = fits.ImageHDU(data=spectra.variance[:, i], header=header)
-        hdu_badpix = fits.ImageHDU(data=spectra.badpix[:, i], header=header)
-        hdulist.append(hdu_flux)
-        hdulist.append(hdu_fluxvar)
-        hdulist.append(hdu_badpix)
+            # save the names of the input data and the extensions ignored
+            hdulist[0].header['SFILE'] = spectraName
+            hdulist[0].header['PFILE'] = photoName
+            hdulist[0].header['NOPHOTO'] = ','.join(map(str, noPhotometryExt))
+            hdulist[0].header['BADQC'] = ','.join(map(str, badQCExt))
+
+            # save the original spectrum's extension number and some other details
+            hdulist[0].header["EXT"] = spectra.ext[i]
+            hdulist[0].header["UTMJD"] = spectra.dates[i]
+            hdulist[0].header["EXPOSE"] = spectra.exposed[i]
+            hdulist[0].header["QC"] = spectra.qc[i]
+
+            # save scale factors/uncertainties
+            hdulist[0].header["SCALEG"] = scaling[0, i]
+            hdulist[0].header["ERRORG"] = scaling[3, i]
+            hdulist[0].header["SCALER"] = scaling[1, i]
+            hdulist[0].header["ERRORR"] = scaling[4, i]
+            hdulist[0].header["SCALEI"] = scaling[2, i]
+            hdulist[0].header["ERRORI"] = scaling[5, i]
+
+            # save photometry/uncertainties used to calculate scale factors
+            hdulist[0].header["MAGG"] = scaling[8, i]
+            hdulist[0].header["MAGUG"] = scaling[9, i]
+            hdulist[0].header["MAGR"] = scaling[10, i]
+            hdulist[0].header["MAGUR"] = scaling[11, i]
+            hdulist[0].header["MAGI"] = scaling[12, i]
+            hdulist[0].header["MAGUI"] = scaling[13, i]
+            hdulist[0].data = spectra.flux[:, i]
+            hdulist.append(fits.ImageHDU(data=spectra.variance[:, i], header=header))
+            hdulist.append(fits.ImageHDU(data=spectra.badpix[:, i], header=header))
+            index = 2
 
 
-    hdulist.writeto(outName, clobber=True)
+        else:
+            hdulist.append(fits.ImageHDU(data=spectra.flux[:, i], header=header))
+            hdulist.append(fits.ImageHDU(data=spectra.variance[:, i], header=header))
+            hdulist.append(fits.ImageHDU(data=spectra.badpix[:, i], header=header))
+    hdulist.writeto(outName, overwrite=True)
     hdulist.close()
 
     return
