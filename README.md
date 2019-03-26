@@ -1,9 +1,9 @@
-# calibSpec
+# OzDES_calibSpec
 This is a code to perform spectrophotometric calibration.  It was designed to calibrate spectral data from the Anglo Australian Telescope by matching it to near simultaneous photometric observations using DECam on the Blanco Telescope as part of the OzDES Reverberation Mapping Program.
 
 
 # Run Requirements
-The code was tested using the following 
+The code was tested using the following
 
 python==3.5.2
 
@@ -16,6 +16,8 @@ numpy==1.13.3
 astropy==3.0.4
 
 scikit_learn==0.19.0
+
+To run just execute >> python OzDES_calibSpec_run.py
 
 # Input Data
 This code will expect you to supply the following data.  The location of this data is defined by the user in calibSpec_run.py.
