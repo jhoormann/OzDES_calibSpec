@@ -12,7 +12,7 @@
 # ---------------------------------------------------------- #
 
 import numpy as np
-import calibSpec_calc as calc
+import OzDES_calibSpec_calc as calc
 import matplotlib.pyplot as plt
 
 
@@ -51,16 +51,20 @@ plotFlag = "../"
 for i in range(1):
     obj_name = str(int(names[i]))
 
+    # Define input data names and read in spectra and photometric light curves
     spectraName = spectraBase + obj_name + spectraEnd
     photoName = photoBase + obj_name + photoEnd
 
     print("Input Spectra Name: %s" % spectraName)
     spectra = calc.Spectrumv18(spectraName)
 
+    # Clean up the spectra.  Marks large isolated variations in flux and variance as bad (nan) and linearly interpolates
+    # over all nans
     calc.mark_as_bad(spectra.flux, spectra.variance)
 
     print("Input Photometry Name: %s" % photoName)
     photo = np.loadtxt(photoName, dtype={'names':('Date', 'Mag', 'Mag_err', 'Band'),
                                          'formats':(np.float, np.float, np.float, '|S15')}, skiprows=1)
 
+    # Calls the main function which does the calibration
     calc.calibSpec(obj_name, spectra, photo, spectraName, photoName, outDir, bands, filters, centers, plotFlag)

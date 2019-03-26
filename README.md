@@ -1,12 +1,12 @@
 # OzDES_calibSpec
 This is a code to perform spectrophotometric calibration.  It was designed to calibrate spectral data from the Anglo Australian Telescope by matching it to near simultaneous photometric observations using DECam on the Blanco Telescope as part of the OzDES Reverberation Mapping Program.
 
-Using the transmission functions for the photometric filters the spectral magnitudes are being matched too, the magnitudes of the spectra in each band are calculated.  The g,r,i data from DECam span the spectroscopic wavelength range covered by OzDES.  The photometric light curve is linearly interpolated in order to determine the photometric magnitude in each band at the time of the spectroscopic observation.  Scale factors are calculated in each band to convert the spectroscopically derived magnitude into agreement with the calibrated photometric magnitudes.  A 2D polynomial is fit to these scale factors.  This warping function is multiplied by the original spectrum in order to calibrate it.  The uncertainty in this warping function is estimated using Gaussian Processes.  The resulting variance spectrum is combined with the observation variance spectrum supplied for each observation.
+Using the transmission functions for the photometric filters the spectral magnitudes are being matched to, the magnitudes of the spectrum in each band are calculated.  The g,r,i data from DECam span the spectroscopic wavelength range covered by OzDES.  The photometric light curve is linearly interpolated in order to determine the photometric magnitude in each band at the time of the spectroscopic observation.  Scale factors are calculated in each band to convert the spectroscopically derived magnitude into agreement with the calibrated photometric magnitudes.  A 2D polynomial is fit to these scale factors.  This warping function is multiplied by the original spectrum in order to calibrate it.  The uncertainty in this warping function is estimated using Gaussian Processes.  The resulting variance spectrum is combined with the observation variance spectrum supplied for each observation.
 
-The bulk of the calculations is done in the file OzDES_calibSpec_calc.py.  The file OzDES_calibSpec_run.py defines the location and names of all the necessary input and output data and then calls the relevant functions.   
+The bulk of the calculations is done in the file OzDES_calibSpec_calc.py.  The file OzDES_calibSpec_run.py defines the location and names of all the necessary input and output data and then calls the relevant functions.
 
 # Run Requirements
-The code was tested using the following
+The code was tested using the following (as stated in requirements.txt)
 
 python==3.5.2
 
@@ -43,6 +43,7 @@ Ext 6+. Ext 3-5 repeated for each exposure
 
 The spectral data is read in via the class Spectrumv18.  If your data is stored differently this class can be modified to read in your data and the rest of the code should run without issue.
 
+The units of the flux need to be F-lambda but the scale can be arbitrary.
 
 ## Photometric Data
 
