@@ -174,9 +174,13 @@ def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase, bands, 
     # And finally warp the data
     for s in extensions:
         # scale the spectra
+        if plotFlag != False:
+            plotName = plotFlag + obj_name + "_" + str(s)
+        else:
+            plotName = False
         spectra.flux[:, s], spectra.variance[:, s] = warp_spectra(scaling[0:3, s], scaling[3:6, s], spectra.flux[:, s],
                                                                   spectra.variance[:, s], spectra.wavelength, centers,
-                                                                  plotFlag)
+                                                                  plotName)
 
     create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, spectraName, photoName, outBase)
 
@@ -339,7 +343,7 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
 
 # -------------------------------------------------- #
 # The next three functions are modified from code    #
-# originally written by Dale Mudd                    #
+# provided by Dale Mudd                              #
 # -------------------------------------------------- #
 # ------------------ filterCurve ------------------- #
 # -------------------------------------------------- #
@@ -456,7 +460,7 @@ def des_photo(photo, spectral_mjd, bands):
     """Takes in an mjd from the spectra, looks through a light curve file to find the nearest photometric epochs and
     performs linear interpolation to get estimate at date, return the photo mags."""
 
-    # !!! Assumes dates are in chronological order
+    # Assumes dates are in chronological order!!!
 
     for l in range(len(photo['Date']) - 1):
         if photo['Band'][l] == bands[0] and photo['Date'][l] < spectral_mjd < photo['Date'][l + 1]:
@@ -511,7 +515,7 @@ def scale_factors(mag_diff, mag_diff_var):
 
     flux_ratio = np.power(10., 0.4 * mag_diff)  # f_synthetic/f_photometry
     scale_factor = (1. / flux_ratio)
-    scale_factor_sigma = mag_diff_var * (scale_factor * 0.4 * 2.3) ** 2
+    scale_factor_sigma = mag_diff_var * (scale_factor * 0.4 * 2.3) ** 2   # ln(10) ~ 2.3
 
     return scale_factor, scale_factor_sigma
 
@@ -520,6 +524,8 @@ def scale_factors(mag_diff, mag_diff_var):
 # -------------------------------------------------- #
 # Fits polynomial to scale factors and estimates     #
 # associated uncertainties with gaussian processes.  #
+# If the plotFlag variable is not False it will save #
+# some diagnostic plots.                             #
 # -------------------------------------------------- #
 
 def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFlag):
@@ -532,8 +538,9 @@ def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFla
     stddev = (scaleErr ** 0.5) / 10 ** -17
     scale_v = scaling / 10 ** -17
 
-    kernel = kernels.RBF(length_scale=300, length_scale_bounds=(0.1, 2000.0))
-    gp = GaussianProcessRegressor(kernel=kernel, alpha=stddev)
+    kernel = kernels.RBF(length_scale=300, length_scale_bounds=(.01, 2000.0))
+
+    gp = GaussianProcessRegressor(kernel=kernel, alpha=stddev**2)
 
     xprime = np.atleast_2d(centers).T
     yprime = np.atleast_2d(scale_v).T
@@ -542,34 +549,44 @@ def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFla
     xplot_prime = np.atleast_2d(wavelength).T
     y_pred, sigma = gp.predict(xplot_prime, return_std=True)
 
-    sigma = sigma * 10 ** -17
+    y_pred = y_pred[:,0]
+
+    sigModel = (sigma/y_pred)*scale(wavelength)
 
     # now scale the original variance and combine with scale factor uncertainty
-    varScale = variance * pow(scale(wavelength), 2) + sigma ** 2
+    varScale = variance * pow(scale(wavelength), 2) + sigModel ** 2
 
-    '''
-    fig, (ax2, ax3) = plt.subplots(2, sharex=True)
-    fig = plt.gcf()
-    fig.set_size_inches(15, 20, forward=True)
-    for label in (ax2.get_xticklabels() + ax2.get_yticklabels()):
-        label.set_fontsize(25)
-    for label in (ax3.get_xticklabels() + ax3.get_yticklabels()):
-        label.set_fontsize(25)
-    fig.subplots_adjust(hspace=0)
 
-    ax2.set_ylabel("f$_\lambda$", **axis_font)
-    ax2.set_xlabel("Wavelength ($\AA$)", **axis_font)
-    ax2.set_title(str(r), **title_font)
-    ax2.plot(wavelength, flux, color='black', label="Before Scaling")
-    ax2.legend(loc=1, frameon=False, prop={'size': 20})
-    ax3.set_ylabel("f$_\lambda$  (10$^{-17}$ erg/s/cm$^2$/$\AA$)", **axis_font)
-    ax3.set_xlabel("Wavelength ($\AA$)", **axis_font)
-    ax3.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Scaling")
-    ax3.legend(loc=1, frameon=False, prop={'size': 20})
+    if plotFlag != False:
+        figa, ax1a, ax2a = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (arbitrary units)",
+                                      "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)", [wavelength[0], wavelength[-1]])
 
-    plt.show()
-    fig.clear()
-    '''
+        ax1a.plot(wavelength, flux, color='black', label="Before Calibration")
+        ax1a.legend(loc=1, frameon=False, prop={'size': 20})
+        ax2a.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Calibration")
+        ax2a.legend(loc=1, frameon=False, prop={'size': 20})
+        plt.savefig(plotFlag + "_beforeAfter.png")
+        plt.close(figa)
+
+
+        figb, ax1b, ax2b = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)",
+                                         "% Uncertainty", [wavelength[0], wavelength[-1]])
+        ax1b.plot(wavelength, fluxScale / 10 ** -17, color='black')
+
+        ax2b.plot(wavelength, 100*abs(pow(varScale, 0.5)/fluxScale), color='black', linestyle='-', label='Total')
+        ax2b.plot(wavelength, 100*abs(sigModel/fluxScale), color='blue', linestyle='-.', label='Warping')
+        ax2b.legend(loc=1, frameon=False, prop={'size': 20})
+        ax2b.set_ylim([0, 50])
+        plt.savefig(plotFlag + "_uncertainty.png")
+        plt.close(figb)
+
+
+        figc, axc = makeFigSingle(plotFlag, "Wavelength ($\AA$)", "Scale Factor (10$^{-17}$ erg/s/cm$^2$/$\AA$/counts)")
+        axc.plot(wavelength, scale(wavelength)/10**-17, color='black')
+        axc.errorbar(centers, scaling/10**-17, yerr=stddev, fmt='s', color='mediumblue')
+        plt.savefig(plotFlag + "_scalefactors.png")
+        plt.close(figc)
+
 
     return fluxScale, varScale
 
@@ -700,9 +717,9 @@ def create_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, s
 # Occasionally you get some big spikes in the data   #
 # that you do not want messing with your magnitude   #
 # calculations.  Remove these by looking at single   #
-# bins that have a significantly larger than average #
-# fluxes or variances and change those to nans.      #
-# Nans will be interpolated over.                    #
+# bins that have a significantly 3.5 larger than     #
+# average fluxes or variances and change those to    #
+# nans. Nans will be interpolated over.              #
 # -------------------------------------------------- #
 
 def mark_as_bad(fluxes, variances):
@@ -741,7 +758,18 @@ def mark_as_bad(fluxes, variances):
                     flux[i + 2] = np.nan
                     flux[i + 3] = np.nan
 
-            if np.isnan(flux[i]) == False and flux[i] > 4.5 * avgf:
+            if np.isnan(flux[i]) == False and flux[i] > 3.5 * avgf:
+
+                flux[i] = np.nan
+                if i > 2 and i < 4996:
+                    flux[i-1] = np.nan
+                    flux[i-2] = np.nan
+                    flux[i-3] = np.nan
+                    flux[i+1] = np.nan
+                    flux[i+2] = np.nan
+                    flux[i+3] = np.nan
+
+            if np.isnan(flux[i]) == False and flux[i] < -3.5 * avgf:
 
                 flux[i] = np.nan
                 if i > 2 and i < 4996:
@@ -813,3 +841,69 @@ def filter_bad_pixels(fluxes, variances):
             bin = bin + 1
     return
 
+
+# -------------------------------------------------- #
+# ----------------- makeFigDouble ------------------ #
+# -------------------------------------------------- #
+# -------------------------------------------------- #
+# A function that defines a figure and axes with two #
+# panels that shares an x axis and has legible axis  #
+# labels.                                            #
+# -------------------------------------------------- #
+font = {'size': '20', 'color': 'black', 'weight': 'normal'}
+
+def makeFigDouble(title, xlabel, ylabel1, ylabel2, xlim=[0, 0], ylim1=[0, 0], ylim2=[0, 0]):
+
+    fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+    fig = plt.gcf()
+    fig.set_size_inches(10, 10, forward=True)
+    fig.subplots_adjust(hspace=0)
+
+    for label in (ax1.get_xticklabels() + ax1.get_yticklabels()):
+        label.set_fontsize(20)
+    for label in (ax2.get_xticklabels() + ax2.get_yticklabels()):
+        label.set_fontsize(20)
+
+    ax1.set_ylabel(ylabel1, **font)
+    if ylim1 != [0, 0] and ylim1[0] < ylim1[1]:
+        ax1.set_ylim(ylim1)
+
+    ax2.set_ylabel(ylabel2, **font)
+    if ylim2 != [0, 0] and ylim2[0] < ylim2[1]:
+        ax2.set_ylim(ylim2)
+
+    ax2.set_xlabel(xlabel, **font)
+    if xlim != [0, 0] and xlim[0] < xlim[1]:
+        ax2.set_xlim(xlim)
+
+    ax1.set_title(title, **font)
+
+    return fig, ax1, ax2
+
+# -------------------------------------------------- #
+# ----------------- makeFigSingle ------------------ #
+# -------------------------------------------------- #
+# -------------------------------------------------- #
+# A function that defines a figure with legible axis #
+# labels.                                            #
+# -------------------------------------------------- #
+def makeFigSingle(title, xlabel, ylabel, xlim=[0, 0], ylim=[0, 0]):
+    fig = plt.figure()
+    fig = plt.gcf()
+    fig.set_size_inches(10, 10, forward=True)
+
+    ax = fig.add_subplot(111)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(20)
+
+    ax.set_ylabel(ylabel, **font)
+    if ylim != [0, 0] and ylim[0] < ylim[1]:
+        ax.set_ylim(ylim)
+
+    ax.set_xlabel(xlabel, **font)
+    if xlim != [0, 0] and xlim[0] < xlim[1]:
+        ax.set_xlim(xlim)
+
+    ax.set_title(title, **font)
+
+    return fig, ax

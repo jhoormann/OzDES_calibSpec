@@ -13,12 +13,11 @@
 
 import numpy as np
 import OzDES_calibSpec_calc as calc
-import matplotlib.pyplot as plt
 
 
 # First define where all of the data can/will be found
 
-# Define where the transmission function is stored
+# Define where the transmission function is stored, the bands used, and the centers of each band
 bands = [b'g', b'r', b'i']
 filters = {b'g': '../OzDES_Pipeline/RMPipeline/input/DES_g_y3a1.dat',
            b'r': '../OzDES_Pipeline/RMPipeline/input/DES_r_y3a1.dat',
@@ -34,6 +33,8 @@ photoBase = "../OzDES_Pipeline/RMPipeline/input/"
 photoEnd = "_lc.dat"
 
 # Define the name of the file that holds the list of sources to calibrate, which we want to be sure is an array
+# The OzDES IDs are 10 digit numbers so below, when the variable obj_name is defined it makes sure it was read in as an
+# integer and converted to a string.  If your IDs are different be sure to change that too!
 idNames = "../OzDES_Pipeline/RMPipeline/input/testNames.txt"
 names = np.genfromtxt(idNames)
 
@@ -44,8 +45,8 @@ if names.size == 1:
 outDir = "../"
 
 # Do you want calibration plots - if so set the flag to the place where they should be saved, otherwise set it to false
-# plotFlag = False
-plotFlag = "../"
+plotFlag = False
+#plotFlag = "../"
 
 # Now we actually call functions and do calculations
 for i in range(1):
@@ -58,8 +59,8 @@ for i in range(1):
     print("Input Spectra Name: %s" % spectraName)
     spectra = calc.Spectrumv18(spectraName)
 
-    # Clean up the spectra.  Marks large isolated variations in flux and variance as bad (nan) and linearly interpolates
-    # over all nans
+    # Clean up the spectra.  Marks large isolated large variations in flux and variance as bad (nan) and linearly
+    # interpolates over all nans
     calc.mark_as_bad(spectra.flux, spectra.variance)
 
     print("Input Photometry Name: %s" % photoName)
