@@ -25,17 +25,17 @@ filters = {b'g': '../OzDES_Pipeline/RMPipeline/input/DES_g_y3a1.dat',
 centers = [4730, 6420, 7840]
 
 # Define where spectra are stored and file name format: name = spectraBase + ID + spectraEnd
-spectraBase = "../OzDES_Pipeline/RMPipeline/input/SVA1_COADD-"
+spectraBase = "../OzDES_Data/spectra180413/SVA1_COADD-"
 spectraEnd = ".fits"
 
 # Define where photometry are stored and file name format
-photoBase = "../OzDES_Pipeline/RMPipeline/input/"
+photoBase = "../OzDES_Data/photometryY5/"
 photoEnd = "_lc.dat"
 
 # Define the name of the file that holds the list of sources to calibrate, which we want to be sure is an array
 # The OzDES IDs are 10 digit numbers so below, when the variable obj_name is defined it makes sure it was read in as an
 # integer and converted to a string.  If your IDs are different be sure to change that too!
-idNames = "../OzDES_Pipeline/RMPipeline/input/testNames.txt"
+idNames = "../names.txt"
 names = np.genfromtxt(idNames)
 
 if names.size == 1:
@@ -45,11 +45,11 @@ if names.size == 1:
 outDir = "../"
 
 # Do you want calibration plots - if so set the flag to the place where they should be saved, otherwise set it to false
-plotFlag = False
-#plotFlag = "../"
+#plotFlag = False
+plotFlag = "../"
 
 # Now we actually call functions and do calculations
-for i in range(1):
+for i in range(len(names)):
     obj_name = str(int(names[i]))
 
     # Define input data names and read in spectra and photometric light curves
