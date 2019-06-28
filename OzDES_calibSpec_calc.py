@@ -4,7 +4,12 @@
 # Australian Telescope by matching it to near simultaneous   #
 # photometric observations using DECam on the Blanco         #
 # Telescope as part of the OzDES Reverberation Mapping       #
-# Program.  Unless otherwise noted this code was written by  #
+# Program.   It also has the option to coadd all spectra     #
+# observed either by observing run or by date of observation.#
+# The bulk of the calculations are defined in the file       #
+# calibSpec_calc.py.  This code defines file locations,      #
+# reads in the data, and calls the calibration function.     #
+# Unless otherwise noted this code was written by            #
 # Janie Hoormann.                                            #
 # ---------------------------------------------------------- #
 
