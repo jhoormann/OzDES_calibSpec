@@ -3,6 +3,8 @@ This is a code to perform spectrophotometric calibration.  It was designed to ca
 
 Using the transmission functions for the photometric filters the spectral magnitudes are being matched to, the magnitudes of the spectrum in each band are calculated.  The g,r,i data from DECam span the spectroscopic wavelength range covered by OzDES.  The photometric light curve is linearly interpolated in order to determine the photometric magnitude in each band at the time of the spectroscopic observation.  Scale factors are calculated in each band to convert the spectroscopically derived magnitude into agreement with the calibrated photometric magnitudes.  A 2D polynomial is fit to these scale factors.  This warping function is multiplied by the original spectrum in order to calibrate it.  The uncertainty in this warping function is estimated using Gaussian Processes.  The resulting variance spectrum is combined with the observation variance spectrum supplied for each observation.  You can read more about this procedure in [this blog post](https://jhoormann.github.io/blog/blog-3/). 
 
+There is also an option to coadd the spectra using the OzDES coadding scripts (see [Childress et al 2017](https://ui.adsabs.harvard.edu/abs/2017MNRAS.472..273C/abstract) for a discussion on the benefits of coadding on signal to noise).  You can either choose to coadd all observations on a specific night, during an entire observing run, or not at all.  
+
 The bulk of the calculations is done in the file OzDES_calibSpec_calc.py.  The file OzDES_calibSpec_run.py defines the location and names of all the necessary input and output data and then calls the relevant functions.
 
 # Run Requirements
@@ -70,6 +72,8 @@ Ext 2. Bad pixel array for first exposure
 Ext 3+. Ext 0-2 repeated for each exposure
 
 Selected information is saved in the header for each extension including the scale factors and photometric magnitudes used in the calibration.
+
+If the coadding option is selected Extensions 0-2 will be the data for the coadd of the entire data sample with subsequent extensions representing individual nights/runs.
 
 # Reference
 If you are using this code please cite the paper where this procedure was first presented,
