@@ -1,4 +1,7 @@
 # ---------------------------------------------------------- #
+# ----------------- OzDES_calibSpec_run.py ----------------- #
+# ------- https://github.com/jhoormann/OzDES_calibSpec ----- #
+# ---------------------------------------------------------- #
 # This is a code to perform spectrophotometric calibration.  #
 # It was designed to calibrate spectral data from the Anglo  #
 # Australian Telescope by matching it to near simultaneous   #
