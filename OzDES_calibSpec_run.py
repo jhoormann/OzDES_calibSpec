@@ -22,7 +22,9 @@ import OzDES_combineSpec_calc as calc
 
 # First define where all of the data can/will be found
 
-# Define where the transmission function is stored, the bands used, and the centers of each band
+# Define where the transmission function is stored, the bands used, and the centers of each band. 
+# The transmission function for each of the photometric filters in a two column format: wavelength 
+# (nm) and transmission fraction (range 0-1)
 bands = [b'g', b'r', b'i']
 filters = {b'g': '../OzDES_Pipeline/RMPipeline/input/DES_g_y3a1.dat',
            b'r': '../OzDES_Pipeline/RMPipeline/input/DES_r_y3a1.dat',
