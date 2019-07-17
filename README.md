@@ -76,6 +76,6 @@ Selected information is saved in the header for each extension including the sca
 If the coadding option is selected Extensions 0-2 will be the data for the coadd of the entire data sample with subsequent extensions representing individual nights/runs.
 
 # Reference
-If you are using this code please cite the paper where this procedure was first presented,
+If you are using this code please cite the paper where this procedure was first presented and link to this github repository,
 
 [Hoormann et al 2019, MNRAS 487, 3:3650](https://ui.adsabs.harvard.edu/abs/2019MNRAS.487.3650H/abstract)
