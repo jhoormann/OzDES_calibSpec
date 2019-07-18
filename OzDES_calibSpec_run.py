@@ -17,7 +17,7 @@
 # ---------------------------------------------------------- #
 
 import numpy as np
-import OzDES_combineSpec_calc as calc
+import OzDES_calibSpec_calc as calc
 
 
 # First define where all of the data can/will be found
