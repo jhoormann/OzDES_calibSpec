@@ -20,6 +20,7 @@ from astropy.io import fits
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.spatial.distance import pdist, cdist, squareform
 from sklearn.gaussian_process import GaussianProcessRegressor, kernels
 import matplotlib.pyplot as plt
 import sys
@@ -161,7 +162,7 @@ class Spectrumv18(object):
 # -------------------------------------------------- #
 
 def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase, bands, filters, centers, plotFlag, coaddFlag,
-              redshift):
+              interpFlag, redshift):
     # Assumes scaling given is of the form
     # gScale = scaling[0,:]   gError = scaling[3,:]
     # rScale = scaling[1,:]   rError = scaling[4,:]
@@ -173,10 +174,15 @@ def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase, bands, 
     # iMag = scaling[12,:]  iMagErr = scaling[13,:]
 
     # First we decide which extensions are worth scaling
-    extensions, noPhotometry, badQC = prevent_Excess(spectra, photo, bands)
+    extensions, noPhotometry, badQC = prevent_Excess(spectra, photo, bands, interpFlag)
 
     # Then we calculate the scale factors
-    nevermind, scaling = scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filters)
+    if plotFlag != False:
+        plotName = plotFlag + obj_name
+    else:
+        plotName = False
+    nevermind, scaling = scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filters, interpFlag,
+                                        plotName)
 
     # Remove last minute trouble makers
     extensions = [e for e in extensions if e not in nevermind]
@@ -211,15 +217,22 @@ def calibSpec(obj_name, spectra, photo, spectraName, photoName, outBase, bands, 
 # or bad quality flags                               #
 # -------------------------------------------------- #
 
-def prevent_Excess(spectra, photo, bands):
-
+def prevent_Excess(spectra, photo, bands, interpFlag):
     # First, find the min/max date for which we have photometry taken on each side of the spectroscopic observation
     # This will be done by finding the highest date for which we have photometry in each band
     # and taking the max/min of those values
     # This is done because we perform a linear interpolation between photometric data points to estimate the magnitudes
     # observed at the specific time of the spectroscopic observation
+    # If you want to use the Gaussian process fitting you can forecast into the future/past by the number of days
+    # set by the delay term.
 
     maxPhot = np.zeros(3)
+
+    # If using Gaussian process fitting you can forecast up to 28 days.  You probably want to make some plots to check
+    # this isn't crazy though!
+    delay = 0
+    if interpFlag == 'BBK':
+        delay = 28
 
     for e in range(len(photo['Date'][:])):
         if photo['Band'][e] == bands[0]:
@@ -231,7 +244,7 @@ def prevent_Excess(spectra, photo, bands):
         if photo['Band'][e] == bands[2]:
             if photo['Date'][e] > maxPhot[2]:
                 maxPhot[2] = photo['Date'][e]
-    photLim = min(maxPhot)
+    photLim = min(maxPhot) + delay
 
     minPhot = np.array([100000, 100000, 100000])
     for e in range(len(photo['Date'][:])):
@@ -244,7 +257,7 @@ def prevent_Excess(spectra, photo, bands):
         if photo['Band'][e] == bands[2]:
             if photo['Date'][e] < minPhot[2]:
                 minPhot[2] = photo['Date'][e]
-    photLimMin = max(minPhot)
+    photLimMin = max(minPhot) - delay
     noPhotometry = []
     badQC = []
 
@@ -281,7 +294,7 @@ def prevent_Excess(spectra, photo, bands):
 # data in the scaling matrix.                        #
 # -------------------------------------------------- #
 
-def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filters):
+def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filters, interpFlag, plotFlag):
     # scale factors for each extension saved in the following form
     # gScale = scaling[0,:]   gError = scaling[3,:]
     # rScale = scaling[1,:]   rError = scaling[4,:]
@@ -313,6 +326,17 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
 
     filterCurves = readFilterCurves(bands, filters)
 
+    if interpFlag == 'BBK':
+        desPhoto, desPhotoU = des_photo_BBK(photo, spectra.dates, bands, spectra.numEpochs, plotFlag)
+
+        scaling[8, :] = desPhoto[0, :]
+        scaling[10, :] = desPhoto[1, :]
+        scaling[12, :] = desPhoto[2, :]
+
+        scaling[9, :] = desPhotoU[0, :]
+        scaling[11, :] = desPhotoU[1, :]
+        scaling[13, :] = desPhotoU[2, :]
+
     nevermind = []
 
     for e in extensions:
@@ -338,15 +362,16 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
             nevermind.append(e)
 
         # Find DES photometry
-        desPhoto[:, e], desPhotoU[:, e] = des_photo(photo, spectra.dates[e], bands)
+        if interpFlag == 'linear':
+            desPhoto[:, e], desPhotoU[:, e] = des_photo(photo, spectra.dates[e], bands)
 
-        scaling[8, e] = desPhoto[0, e]
-        scaling[10, e] = desPhoto[1, e]
-        scaling[12, e] = desPhoto[2, e]
+            scaling[8, e] = desPhoto[0, e]
+            scaling[10, e] = desPhoto[1, e]
+            scaling[12, e] = desPhoto[2, e]
 
-        scaling[9, e] = desPhotoU[0, e]
-        scaling[11, e] = desPhotoU[1, e]
-        scaling[13, e] = desPhotoU[2, e]
+            scaling[9, e] = desPhotoU[0, e]
+            scaling[11, e] = desPhotoU[1, e]
+            scaling[13, e] = desPhotoU[2, e]
 
         # Find Scale Factor
         scaling[0, e], scaling[3, e] = scale_factors(desPhoto[0, e] - ozdesPhoto[0, e],
@@ -355,6 +380,7 @@ def scaling_Matrix(spectra, extensions, badQC, noPhotometry, photo, bands, filte
                                                      desPhotoU[1, e] + ozdesPhotoU[1, e])
         scaling[2, e], scaling[5, e] = scale_factors(desPhoto[2, e] - ozdesPhoto[2, e],
                                                      desPhotoU[2, e] + ozdesPhotoU[2, e])
+
 
     return nevermind, scaling
 
@@ -469,15 +495,17 @@ def computeABmag(trans_flux, trans_wave, tmp_wave, tmp_flux, tmp_var):
 # -------------------------------------------------- #
 # Finds nearest photometry on both sides of spectral #
 # observations and interpolates to find value at the #
-# time of the spectral observation                   #
+# time of the spectral observation.                  #
 # -------------------------------------------------- #
 
 def des_photo(photo, spectral_mjd, bands):
 
     """Takes in an mjd from the spectra, looks through a light curve file to find the nearest photometric epochs and
-    performs linear interpolation to get estimate at date, return the photo mags."""
+    performs linear interpolation to get estimate at date, return the photo mags.   """
 
     # Assumes dates are in chronological order!!!
+    mags = np.zeros(3)
+    errs = np.zeros(3)
 
     for l in range(len(photo['Date']) - 1):
         if photo['Band'][l] == bands[0] and photo['Date'][l] < spectral_mjd < photo['Date'][l + 1]:
@@ -493,16 +521,89 @@ def des_photo(photo, spectral_mjd, bands):
             i_mag_v = np.array([photo['Mag'][l], photo['Mag'][l + 1]])
             i_err_v = np.array([photo['Mag_err'][l], photo['Mag_err'][l + 1]])
 
-    g_mag, g_mag_err = interpolatePhot(g_date_v, g_mag_v, g_err_v, spectral_mjd)
-    r_mag, r_mag_err = interpolatePhot(r_date_v, r_mag_v, r_err_v, spectral_mjd)
-    i_mag, i_mag_err = interpolatePhot(i_date_v, i_mag_v, i_err_v, spectral_mjd)
+    mags[0], errs[0] = interpolatePhot(g_date_v, g_mag_v, g_err_v, spectral_mjd)
+    mags[1], errs[1] = interpolatePhot(r_date_v, r_mag_v, r_err_v, spectral_mjd)
+    mags[2], errs[2] = interpolatePhot(i_date_v, i_mag_v, i_err_v, spectral_mjd)
 
-    return [g_mag, r_mag, i_mag], [g_mag_err, r_mag_err, i_mag_err]
+    return mags, errs
+
+
+# -------------------------------------------------- #
+# ---------------- des_photo_BBK  ------------------ #
+# -------------------------------------------------- #
+# Finds nearest photometry on both sides of spectral #
+# observations and interpolates to find value at the #
+# time of the spectral observations using Brownian   #
+# Bridge Gaussian processes.  This is better for     #
+# sparser data.                                      #
+# -------------------------------------------------- #
+
+def des_photo_BBK(photo, dates, bands, numEpochs, plotFlag):
+
+    # Assumes dates are in chronological order!!!
+    mags = np.zeros((3, numEpochs))
+
+    errs = np.zeros((3, numEpochs))
+
+    # Fit a Brownian Bridge Kernel to the data via Gaussian processes.
+    for b in range(3):
+        x = []  # Dates for each band
+        y = []  # Mags for each band
+        s = []  # Errors for each band
+
+        # get data for each band
+        for l in range(len(photo['Date']) - 1):
+            if photo['Band'][l] == bands[b]:
+                x.append(photo['Date'][l])
+                y.append(photo['Mag'][l])
+                s.append(photo['Mag_err'][l])
+
+        x = np.array(x)
+        y = np.array(y)
+        s = np.array(s)
+
+        # Define kernel for Gaussian process: Browning Bridge x Constant
+        kernel1 = BBK(length_scale=25, length_scale_bounds=(1, 1000))
+        kernel2 = kernels.ConstantKernel(constant_value=1.0, constant_value_bounds=(0.001, 10.0))
+        gp = GaussianProcessRegressor(kernel=kernel1 * kernel2, alpha=s ** 2, normalize_y=True)
+
+        # Fit the data with the model
+        xprime = np.atleast_2d(x).T
+        yprime = np.atleast_2d(y).T
+        gp.fit(xprime, yprime)
+
+        if plotFlag != False:
+            # Plot what the model looks like
+            bname = ['_g', '_r', '_i']
+            preddates = np.linspace(min(x) - 100, max(x) + 100, 3000)
+            y_predAll, sigmaAll = gp.predict(np.atleast_2d(preddates).T, return_std=True)
+            y_predAll = y_predAll.flatten()
+            fig, ax1 = makeFigSingle(plotFlag + bname[b], 'Date', 'Mag', [dates[0], dates[-1]])
+
+            # I want to plot lines where the observations take place - only plot one per night though
+            dateCull = dates.astype(int)
+            dateCull = np.unique(dateCull)
+            for e in range(len(dateCull)):
+                ax1.axvline(dateCull[e], color='grey', alpha=0.5)
+            ax1.errorbar(x, y, yerr=s, fmt='o', color='mediumblue', markersize='7')
+
+            # Plot model with error bars.
+            ax1.plot(preddates, y_predAll, color='black')
+            ax1.fill_between(preddates, y_predAll - sigmaAll, y_predAll + sigmaAll, alpha=0.5, color='black')
+            plt.savefig(plotFlag + bname[b] + "_photoModel.png")
+            plt.close(fig)
+
+        # Predict photometry vales for each observation
+        y_pred, sigma = gp.predict(np.atleast_2d(dates).T, return_std=True)
+        mags[b, :] = y_pred.flatten()
+        errs[b, :] = sigma[0]**2
+
+    return mags, errs
 
 # -------------------------------------------------- #
 # --------------- interpolatePhot  ----------------- #
 # -------------------------------------------------- #
-# Performs linear interpolation and propagates the    #
+# Performs linear interpolation and propagates the   #
 # uncertainty to return you a variance.              #
 # -------------------------------------------------- #
 
@@ -573,47 +674,42 @@ def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFla
     # now scale the original variance and combine with scale factor uncertainty
     varScale = variance * pow(scale(wavelength), 2) + sigModel ** 2
 
-
-    if plotFlag != False:
-        figa, ax1a, ax2a = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (arbitrary units)",
-                                      "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)", [wavelength[0], wavelength[-1]])
-
-        ax1a.plot(wavelength, flux, color='black', label="Before Calibration")
-        ax1a.legend(loc=1, frameon=False, prop={'size': 20})
-        ax2a.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Calibration")
-        ax2a.legend(loc=1, frameon=False, prop={'size': 20})
-        plt.savefig(plotFlag + "_beforeAfter.png")
-        plt.close(figa)
-
-
-        figb, ax1b, ax2b = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)",
-                                         "% Uncertainty", [wavelength[0], wavelength[-1]])
-        ax1b.plot(wavelength, fluxScale / 10 ** -17, color='black')
-
-        ax2b.plot(wavelength, 100*abs(pow(varScale, 0.5)/fluxScale), color='black', linestyle='-', label='Total')
-        ax2b.plot(wavelength, 100*abs(sigModel/fluxScale), color='blue', linestyle='-.', label='Warping')
-        ax2b.legend(loc=1, frameon=False, prop={'size': 20})
-        ax2b.set_ylim([0, 50])
-        plt.savefig(plotFlag + "_uncertainty.png")
-        plt.close(figb)
-
-
-        figc, axc = makeFigSingle(plotFlag, "Wavelength ($\AA$)", "Scale Factor (10$^{-17}$ erg/s/cm$^2$/$\AA$/counts)")
-        axc.plot(wavelength, scale(wavelength)/10**-17, color='black')
-        axc.errorbar(centers, scaling/10**-17, yerr=stddev, fmt='s', color='mediumblue')
-        plt.savefig(plotFlag + "_scalefactors.png")
-        plt.close(figc)
-
+    # if plotFlag != False:
+    #     figa, ax1a, ax2a = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (arbitrary units)",
+    #                                   "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)", [wavelength[0], wavelength[-1]])
+    #
+    #     ax1a.plot(wavelength, flux, color='black', label="Before Calibration")
+    #     ax1a.legend(loc=1, frameon=False, prop={'size': 20})
+    #     ax2a.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Calibration")
+    #     ax2a.legend(loc=1, frameon=False, prop={'size': 20})
+    #     plt.savefig(plotFlag + "_beforeAfter.png")
+    #     plt.close(figa)
+    #
+    #     figb, ax1b, ax2b = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)",
+    #                                      "% Uncertainty", [wavelength[0], wavelength[-1]])
+    #     ax1b.plot(wavelength, fluxScale / 10 ** -17, color='black')
+    #
+    #     ax2b.plot(wavelength, 100*abs(pow(varScale, 0.5)/fluxScale), color='black', linestyle='-', label='Total')
+    #     ax2b.plot(wavelength, 100*abs(sigModel/fluxScale), color='blue', linestyle='-.', label='Warping')
+    #     ax2b.legend(loc=1, frameon=False, prop={'size': 20})
+    #     ax2b.set_ylim([0, 50])
+    #     plt.savefig(plotFlag + "_uncertainty.png")
+    #     plt.close(figb)
+    #
+    #     figc, axc = makeFigSingle(plotFlag, "Wavelength ($\AA$)", "Scale Factor (10$^{-17}$ erg/s/cm$^2$/$\AA$/counts)")
+    #     axc.plot(wavelength, scale(wavelength)/10**-17, color='black')
+    #     axc.errorbar(centers, scaling/10**-17, yerr=stddev, fmt='s', color='mediumblue')
+    #     plt.savefig(plotFlag + "_scalefactors.png")
+    #     plt.close(figc)
 
     return fluxScale, varScale
+
 
 # -------------------------------------------------- #
 # ------------ create_output_single  --------------- #
 # -------------------------------------------------- #
 # Outputs the warped spectra to a new fits file.     #
 # -------------------------------------------------- #
-
-
 def create_output_single(obj_name, extensions, scaling, spectra, noPhotometry, badQC, spectraName, photoName, outBase,
                          redshift):
 
@@ -888,8 +984,6 @@ def create_output_coadd(obj_name, runList, fluxArray, varianceArray, badpixArray
 # -------------------------------------------------- #
 # Coadds the observations based on run or night.     #
 # -------------------------------------------------- #
-
-
 def coadd_output(obj_name, extensions, scaling, spectra, noPhotometry, badQC, spectraName, photoName, outBase, plotFlag,
                  coaddFlag, redshift):
 
@@ -1040,6 +1134,7 @@ def mark_as_bad(fluxes, variances):
         filter_bad_pixels(flux, variance)
     return
 
+
 # -------------------------------------------------- #
 # Modified from code originally provided by          #
 # Harry Hobson                                       #
@@ -1048,7 +1143,6 @@ def mark_as_bad(fluxes, variances):
 # -------------------------------------------------- #
 # Interpolates over nans in the spectrum.            #
 # -------------------------------------------------- #
-
 def filter_bad_pixels(fluxes, variances):
     number = int(fluxes.size/fluxes.shape[0])
     for epoch in range(number):
@@ -1061,8 +1155,8 @@ def filter_bad_pixels(fluxes, variances):
 
         nBins = len(flux)
 
-        flux[0] = 0.0
-        flux[-1] = 0.0
+        flux[0] = np.nanmean(flux)/1000
+        flux[-1] = np.nanmean(flux)/1000
         variance[0] = 100*np.nanmean(variance)
         variance[-1] = 100*np.nanmean(variance)
 
@@ -1163,6 +1257,8 @@ def makeFigSingle(title, xlabel, ylabel, xlim=[0, 0], ylim=[0, 0]):
     ax.set_title(title, **font)
 
     return fig, ax
+
+
 # -------------------------------------------------- #
 #  The following 4 functions were written by Chris   #
 # Lidman, Mike Childress, and maybe others for the   #
@@ -1356,3 +1452,119 @@ def outlier_reject_and_coadd(obj_name, speclist):
 
     # Return the coadded spectrum in a SingleSpectrum object
     return SingleSpec(obj_name, wl, coaddflux, coaddfluxvar, badpix_coadd)
+
+
+# -------------------------------------------------- #
+# ----------------------- BBK ---------------------- #
+# -------------------------------------------------- #
+# -------------------------------------------------- #
+# A Brownian Bridge Kernel to use with sklearn       #
+# Gaussian Processes to interpolate between          #
+# photometry.  I have really just copied             #
+# Scikit-learn's RBF kernel and modified it to be a  #
+# brownian bridge (sqeuclidian -> euclidian).        #
+# -------------------------------------------------- #
+class BBK(kernels.StationaryKernelMixin, kernels.NormalizedKernelMixin, kernels.Kernel):
+    # Here I am slightly modifying scikit-learn's RBF Kernel to do
+    # the brownian bridge.
+
+    """Radial-basis function kernel (aka squared-exponential kernel).
+    The RBF kernel is a stationary kernel. It is also known as the
+    "squared exponential" kernel. It is parameterized by a length-scale
+    parameter length_scale>0, which can either be a scalar (isotropic variant
+    of the kernel) or a vector with the same number of dimensions as the inputs
+    X (anisotropic variant of the kernel). The kernel is given by:
+    k(x_i, x_j) = exp(-1 / 2 d(x_i / length_scale, x_j / length_scale)^2)
+    This kernel is infinitely differentiable, which implies that GPs with this
+    kernel as covariance function have mean square derivatives of all orders,
+    and are thus very smooth.
+    .. versionadded:: 0.18
+    Parameters
+    ----------
+    length_scale : float or array with shape (n_features,), default: 1.0
+        The length scale of the kernel. If a float, an isotropic kernel is
+        used. If an array, an anisotropic kernel is used where each dimension
+        of l defines the length-scale of the respective feature dimension.
+    length_scale_bounds : pair of floats >= 0, default: (1e-5, 1e5)
+        The lower and upper bound on length_scale
+    """
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5)):
+        self.length_scale = length_scale
+        self.length_scale_bounds = length_scale_bounds
+
+    @property
+    def anisotropic(self):
+        return np.iterable(self.length_scale) and len(self.length_scale) > 1
+
+    @property
+    def hyperparameter_length_scale(self):
+        if self.anisotropic:
+            return kernels.Hyperparameter("length_scale", "numeric",
+                                  self.length_scale_bounds,
+                                  len(self.length_scale))
+        return kernels.Hyperparameter(
+            "length_scale", "numeric", self.length_scale_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        """Return the kernel k(X, Y) and optionally its gradient.
+        Parameters
+        ----------
+        X : array, shape (n_samples_X, n_features)
+            Left argument of the returned kernel k(X, Y)
+        Y : array, shape (n_samples_Y, n_features), (optional, default=None)
+            Right argument of the returned kernel k(X, Y). If None, k(X, X)
+            if evaluated instead.
+        eval_gradient : bool (optional, default=False)
+            Determines whether the gradient with respect to the kernel
+            hyperparameter is determined. Only supported when Y is None.
+        Returns
+        -------
+        K : array, shape (n_samples_X, n_samples_Y)
+            Kernel k(X, Y)
+        K_gradient : array (opt.), shape (n_samples_X, n_samples_X, n_dims)
+            The gradient of the kernel k(X, X) with respect to the
+            hyperparameter of the kernel. Only returned when eval_gradient
+            is True.
+        """
+        X = np.atleast_2d(X)
+        length_scale = kernels._check_length_scale(X, self.length_scale)
+        if Y is None:
+            # JKH: All I changed was 'sqeuclidean' to 'euclidean'
+            dists = pdist(X / length_scale, metric='euclidean')
+            K = np.exp(-.5 * dists)
+            # convert from upper-triangular matrix to square matrix
+            K = squareform(K)
+            np.fill_diagonal(K, 1)
+        else:
+            if eval_gradient:
+                raise ValueError(
+                    "Gradient can only be evaluated when Y is None.")
+            dists = cdist(X / length_scale, Y / length_scale,
+                          metric='euclidean')
+            K = np.exp(-.5 * dists)
+
+        if eval_gradient:
+            if self.hyperparameter_length_scale.fixed:
+                # Hyperparameter l kept fixed
+                return K, np.empty((X.shape[0], X.shape[0], 0))
+            elif not self.anisotropic or length_scale.shape[0] == 1:
+                K_gradient = \
+                    (K * squareform(dists))[:, :, np.newaxis]
+                return K, K_gradient
+            elif self.anisotropic:
+                # We need to recompute the pairwise dimension-wise distances
+                K_gradient = (X[:, np.newaxis, :] - X[np.newaxis, :, :]) ** 2 \
+                    / (length_scale ** 2)
+                K_gradient *= K[..., np.newaxis]
+                return K, K_gradient
+        else:
+            return K
+
+    def __repr__(self):
+        if self.anisotropic:
+            return "{0}(length_scale=[{1}])".format(
+                self.__class__.__name__, ", ".join(map("{0:.3g}".format,
+                                                   self.length_scale)))
+        else:  # isotropic
+            return "{0}(length_scale={1:.3g})".format(
+                self.__class__.__name__, np.ravel(self.length_scale)[0])
