@@ -674,33 +674,33 @@ def warp_spectra(scaling, scaleErr, flux, variance, wavelength, centers, plotFla
     # now scale the original variance and combine with scale factor uncertainty
     varScale = variance * pow(scale(wavelength), 2) + sigModel ** 2
 
-    # if plotFlag != False:
-    #     figa, ax1a, ax2a = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (arbitrary units)",
-    #                                   "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)", [wavelength[0], wavelength[-1]])
-    #
-    #     ax1a.plot(wavelength, flux, color='black', label="Before Calibration")
-    #     ax1a.legend(loc=1, frameon=False, prop={'size': 20})
-    #     ax2a.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Calibration")
-    #     ax2a.legend(loc=1, frameon=False, prop={'size': 20})
-    #     plt.savefig(plotFlag + "_beforeAfter.png")
-    #     plt.close(figa)
-    #
-    #     figb, ax1b, ax2b = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)",
-    #                                      "% Uncertainty", [wavelength[0], wavelength[-1]])
-    #     ax1b.plot(wavelength, fluxScale / 10 ** -17, color='black')
-    #
-    #     ax2b.plot(wavelength, 100*abs(pow(varScale, 0.5)/fluxScale), color='black', linestyle='-', label='Total')
-    #     ax2b.plot(wavelength, 100*abs(sigModel/fluxScale), color='blue', linestyle='-.', label='Warping')
-    #     ax2b.legend(loc=1, frameon=False, prop={'size': 20})
-    #     ax2b.set_ylim([0, 50])
-    #     plt.savefig(plotFlag + "_uncertainty.png")
-    #     plt.close(figb)
-    #
-    #     figc, axc = makeFigSingle(plotFlag, "Wavelength ($\AA$)", "Scale Factor (10$^{-17}$ erg/s/cm$^2$/$\AA$/counts)")
-    #     axc.plot(wavelength, scale(wavelength)/10**-17, color='black')
-    #     axc.errorbar(centers, scaling/10**-17, yerr=stddev, fmt='s', color='mediumblue')
-    #     plt.savefig(plotFlag + "_scalefactors.png")
-    #     plt.close(figc)
+    if plotFlag != False:
+        figa, ax1a, ax2a = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (arbitrary units)",
+                                      "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)", [wavelength[0], wavelength[-1]])
+
+        ax1a.plot(wavelength, flux, color='black', label="Before Calibration")
+        ax1a.legend(loc=1, frameon=False, prop={'size': 20})
+        ax2a.plot(wavelength, fluxScale / 10 ** -17, color='black', label="After Calibration")
+        ax2a.legend(loc=1, frameon=False, prop={'size': 20})
+        plt.savefig(plotFlag + "_beforeAfter.png")
+        plt.close(figa)
+
+        figb, ax1b, ax2b = makeFigDouble(plotFlag, "Wavelength ($\AA$)", "f$_\lambda$ (10$^{-17}$ erg/s/cm$^2$/$\AA$)",
+                                         "% Uncertainty", [wavelength[0], wavelength[-1]])
+        ax1b.plot(wavelength, fluxScale / 10 ** -17, color='black')
+
+        ax2b.plot(wavelength, 100*abs(pow(varScale, 0.5)/fluxScale), color='black', linestyle='-', label='Total')
+        ax2b.plot(wavelength, 100*abs(sigModel/fluxScale), color='blue', linestyle='-.', label='Warping')
+        ax2b.legend(loc=1, frameon=False, prop={'size': 20})
+        ax2b.set_ylim([0, 50])
+        plt.savefig(plotFlag + "_uncertainty.png")
+        plt.close(figb)
+
+        figc, axc = makeFigSingle(plotFlag, "Wavelength ($\AA$)", "Scale Factor (10$^{-17}$ erg/s/cm$^2$/$\AA$/counts)")
+        axc.plot(wavelength, scale(wavelength)/10**-17, color='black')
+        axc.errorbar(centers, scaling/10**-17, yerr=stddev, fmt='s', color='mediumblue')
+        plt.savefig(plotFlag + "_scalefactors.png")
+        plt.close(figc)
 
     return fluxScale, varScale
 
